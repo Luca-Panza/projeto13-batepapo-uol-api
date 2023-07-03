@@ -25,7 +25,7 @@ app.post("/participants", async (req, res) => {
   const currentTime = dayjs().format("HH:mm:ss");
 
   try {
-    if (!name) {
+    if (typeof name !== "string" || !name) {
       return res.sendStatus(422);
     }
 
@@ -91,7 +91,21 @@ app.get("/messages", async (req, res) => {
     const validMessages = await db
       .collection("messages")
       .find({
-        $or: [{ type: { $in: ["private_message", "status", "message"] } }, { from: { $in: ["Todos", user] } }, { to: user }],
+        $or: [
+          { type: { $in: ["status", "message"] } },
+          {
+            $and: [
+              { type: "private_message" },
+              {
+                $or: [
+                  { from: user, to: { $ne: user } },
+                  { from: { $ne: user }, to: user },
+                ],
+              },
+            ],
+          },
+          { from: "Todos" },
+        ],
       })
       .limit(limit)
       .toArray();
