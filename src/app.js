@@ -3,6 +3,7 @@ import { MongoClient } from "mongodb";
 import cors from "cors";
 import dayjs from "dayjs";
 import dotenv from "dotenv";
+import joi from "joi";
 
 dotenv.config();
 const app = express();
@@ -24,11 +25,16 @@ app.post("/participants", async (req, res) => {
 
   const currentTime = dayjs().format("HH:mm:ss");
 
-  try {
-    if (typeof name !== "string" || !name) {
-      return res.sendStatus(422);
-    }
+  const nameSchema = joi.object({ name: joi.string().required() });
 
+  const validation = nameSchema.validate({ name }, { abortEarly: false });
+
+  if (validation.error) {
+    const errors = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errors);
+  }
+
+  try {
     const existingParticipant = await db.collection("participants").findOne({ name });
 
     if (existingParticipant) {
@@ -58,15 +64,21 @@ app.post("/messages", async (req, res) => {
 
   const currentTime = dayjs().format("HH:mm:ss");
 
+  const messageSchema = joi.object({
+    user: joi.string().required(),
+    to: joi.string().required(),
+    text: joi.string().required(),
+    type: joi.string().allow("message", "private_message").only().required(),
+  });
+
+  const validation = messageSchema.validate({ user, to, text, type }, { abortEarly: false });
+
+  if (validation.error) {
+    const errors = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errors);
+  }
+
   try {
-    if (typeof to !== "string" || to === "" || typeof text !== "string" || text === "") {
-      return res.sendStatus(422);
-    }
-
-    if (type !== "message" && type !== "private_message") {
-      return res.sendStatus(422);
-    }
-
     const existingParticipant = await db.collection("participants").findOne({ name: user });
 
     if (!existingParticipant) {
@@ -83,11 +95,11 @@ app.get("/messages", async (req, res) => {
   const { user } = req.headers;
   const limit = Number(req.query.limit);
 
-  try {
-    if (isNaN(limit) || limit <= 0) {
-      return res.status(422).send("Invalid limit value");
-    }
+  if (isNaN(limit) || limit <= 0) {
+    return res.status(422).send("Invalid limit value");
+  }
 
+  try {
     const validMessages = await db
       .collection("messages")
       .find({
@@ -120,11 +132,16 @@ app.post("/status", async (req, res) => {
 
   const currentTime = dayjs().format("HH:mm:ss");
 
-  try {
-    if (!user) {
-      return res.sendStatus(404);
-    }
+  const userSchema = joi.object({ user: joi.string().required() });
 
+  const validation = userSchema.validate({ user }, { abortEarly: false });
+
+  if (validation.error) {
+    const errors = validation.error.details.map((detail) => detail.message);
+    return res.status(404).send(errors);
+  }
+
+  try {
     const existingParticipant = await db.collection("participants").findOne({ name: user });
 
     if (!existingParticipant) {
@@ -169,3 +186,4 @@ setInterval(async () => {
 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`Port:${PORT}/`));
+
