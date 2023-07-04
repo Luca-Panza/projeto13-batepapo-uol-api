@@ -1,5 +1,6 @@
 import express, { json } from "express";
 import { MongoClient } from "mongodb";
+import { stripHtml } from "string-strip-html";
 import cors from "cors";
 import dayjs from "dayjs";
 import dotenv from "dotenv";
@@ -20,12 +21,21 @@ try {
 }
 const db = mongoClient.db();
 
+//Schemas:
+const userSchema = joi.object({ user: joi.string().required().trim() });
+const nameSchema = joi.object({ name: joi.string().required().trim() });
+const messageSchema = joi.object({
+  user: joi.string().required().trim(),
+  to: joi.string().required().trim(),
+  text: joi.string().required().trim(),
+  type: joi.string().allow("message", "private_message").only().required(),
+});
+
 app.post("/participants", async (req, res) => {
   const { name } = req.body;
 
   const currentTime = dayjs().format("HH:mm:ss");
-
-  const nameSchema = joi.object({ name: joi.string().required() });
+  const cleanName = stripHtml(name).result;
 
   const validation = nameSchema.validate({ name }, { abortEarly: false });
 
@@ -35,14 +45,14 @@ app.post("/participants", async (req, res) => {
   }
 
   try {
-    const existingParticipant = await db.collection("participants").findOne({ name });
+    const existingParticipant = await db.collection("participants").findOne({ name: cleanName });
 
-    if (existingParticipant) {
-      return res.sendStatus(409);
-    }
+    if (existingParticipant) return res.sendStatus(409);
 
-    await db.collection("participants").insertOne({ name, lastStatus: Date.now() });
-    await db.collection("messages").insertOne({ from: name, to: "Todos", text: "entra na sala...", type: "status", time: currentTime });
+    await db.collection("participants").insertOne({ name: cleanName, lastStatus: Date.now() });
+    await db
+      .collection("messages")
+      .insertOne({ from: cleanName, to: "Todos", text: "entra na sala...", type: "status", time: currentTime });
     res.sendStatus(201);
   } catch (err) {
     res.status(500).send(err.message);
@@ -63,13 +73,14 @@ app.post("/messages", async (req, res) => {
   const { user } = req.headers;
 
   const currentTime = dayjs().format("HH:mm:ss");
-
-  const messageSchema = joi.object({
-    user: joi.string().required(),
-    to: joi.string().required(),
-    text: joi.string().required(),
-    type: joi.string().allow("message", "private_message").only().required(),
-  });
+  const cleanUser = stripHtml(user).result;
+  const cleanMessage = {
+    from: cleanUser,
+    to: stripHtml(to).result,
+    text: stripHtml(text).result,
+    type: stripHtml(type).result,
+    time: currentTime,
+  };
 
   const validation = messageSchema.validate({ user, to, text, type }, { abortEarly: false });
 
@@ -79,12 +90,12 @@ app.post("/messages", async (req, res) => {
   }
 
   try {
-    const existingParticipant = await db.collection("participants").findOne({ name: user });
+    const existingParticipant = await db.collection("participants").findOne({ name: cleanUser });
 
     if (!existingParticipant) {
       return res.sendStatus(422);
     }
-    await db.collection("messages").insertOne({ from: user, to, text, type: type, time: currentTime });
+    await db.collection("messages").insertOne(cleanMessage);
     res.sendStatus(201);
   } catch (err) {
     res.status(500).send(err.message);
@@ -129,10 +140,6 @@ app.get("/messages", async (req, res) => {
 
 app.post("/status", async (req, res) => {
   const { user } = req.headers;
-
-  const currentTime = dayjs().format("HH:mm:ss");
-
-  const userSchema = joi.object({ user: joi.string().required() });
 
   const validation = userSchema.validate({ user }, { abortEarly: false });
 
@@ -186,4 +193,3 @@ setInterval(async () => {
 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`Port:${PORT}/`));
-
