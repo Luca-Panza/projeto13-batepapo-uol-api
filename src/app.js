@@ -35,7 +35,6 @@ app.post("/participants", async (req, res) => {
   const { name } = req.body;
 
   const currentTime = dayjs().format("HH:mm:ss");
-  const cleanName = stripHtml(name).result;
 
   const validation = nameSchema.validate({ name }, { abortEarly: false });
 
@@ -43,6 +42,8 @@ app.post("/participants", async (req, res) => {
     const errors = validation.error.details.map((detail) => detail.message);
     return res.status(422).send(errors);
   }
+
+  const cleanName = stripHtml(name).result;
 
   try {
     const existingParticipant = await db.collection("participants").findOne({ name: cleanName });
@@ -73,6 +74,14 @@ app.post("/messages", async (req, res) => {
   const { user } = req.headers;
 
   const currentTime = dayjs().format("HH:mm:ss");
+
+  const validation = messageSchema.validate({ user, to, text, type }, { abortEarly: false });
+
+  if (validation.error) {
+    const errors = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errors);
+  }
+
   const cleanUser = stripHtml(user).result;
   const cleanMessage = {
     from: cleanUser,
@@ -81,13 +90,6 @@ app.post("/messages", async (req, res) => {
     type: stripHtml(type).result,
     time: currentTime,
   };
-
-  const validation = messageSchema.validate({ user, to, text, type }, { abortEarly: false });
-
-  if (validation.error) {
-    const errors = validation.error.details.map((detail) => detail.message);
-    return res.status(422).send(errors);
-  }
 
   try {
     const existingParticipant = await db.collection("participants").findOne({ name: cleanUser });
